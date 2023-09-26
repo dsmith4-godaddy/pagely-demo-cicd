@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
+        with:
+          submodules: recursive
       - name: Run deploy
         uses: godaddy-wordpress/pagely-deploy-action@v1
         with:
