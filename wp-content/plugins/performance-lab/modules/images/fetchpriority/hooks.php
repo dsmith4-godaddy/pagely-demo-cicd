@@ -6,6 +6,10 @@
  * @since 2.1.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; // Exit if accessed directly.
+}
+
 /**
  * Filters an image tag in content to add the fetchpriority attribute if it is not lazy-loaded.
  *
@@ -72,7 +76,7 @@ add_action( 'wp_head', 'fetchpriority_render_generator' );
 if ( function_exists( 'wp_get_loading_optimization_attributes' ) && ! str_starts_with( FETCHPRIORITY_VERSION, 'Performance Lab ' ) ) {
 	add_action(
 		'admin_notices',
-		static function() {
+		static function () {
 			?>
 			<div class="notice notice-warning">
 				<p>
