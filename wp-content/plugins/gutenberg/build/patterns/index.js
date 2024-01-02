@@ -86,17 +86,30 @@ var external_wp_blocks_namespaceObject = window["wp"]["blocks"];
 var external_wp_coreData_namespaceObject = window["wp"]["coreData"];
 ;// CONCATENATED MODULE: external ["wp","blockEditor"]
 var external_wp_blockEditor_namespaceObject = window["wp"]["blockEditor"];
+;// CONCATENATED MODULE: external ["wp","i18n"]
+var external_wp_i18n_namespaceObject = window["wp"]["i18n"];
 ;// CONCATENATED MODULE: ./packages/patterns/build-module/constants.js
+/**
+ * WordPress dependencies
+ */
+
 const PATTERN_TYPES = {
   theme: 'pattern',
   user: 'wp_block'
 };
 const PATTERN_DEFAULT_CATEGORY = 'all-patterns';
 const PATTERN_USER_CATEGORY = 'my-patterns';
-const PATTERN_CORE_SOURCES = ['core', 'pattern-directory/core', 'pattern-directory/featured', 'pattern-directory/theme'];
+const EXCLUDED_PATTERN_SOURCES = ['core', 'pattern-directory/core', 'pattern-directory/featured'];
 const PATTERN_SYNC_TYPES = {
   full: 'fully',
   unsynced: 'unsynced'
+};
+
+// TODO: This should not be hardcoded. Maybe there should be a config and/or an UI.
+const PARTIAL_SYNCING_SUPPORTED_BLOCKS = {
+  'core/paragraph': {
+    content: (0,external_wp_i18n_namespaceObject.__)('Content')
+  }
 };
 
 ;// CONCATENATED MODULE: ./packages/patterns/build-module/store/actions.js
@@ -264,8 +277,6 @@ unlock(store).registerPrivateSelectors(selectors_namespaceObject);
 var external_React_namespaceObject = window["React"];
 ;// CONCATENATED MODULE: external ["wp","components"]
 var external_wp_components_namespaceObject = window["wp"]["components"];
-;// CONCATENATED MODULE: external ["wp","i18n"]
-var external_wp_i18n_namespaceObject = window["wp"]["i18n"];
 ;// CONCATENATED MODULE: external ["wp","element"]
 var external_wp_element_namespaceObject = window["wp"]["element"];
 ;// CONCATENATED MODULE: external ["wp","notices"]
@@ -321,7 +332,8 @@ function CategorySelector({
     label: (0,external_wp_i18n_namespaceObject.__)('Categories'),
     tokenizeOnBlur: true,
     __experimentalExpandOnFocus: true,
-    __next40pxDefaultSize: true
+    __next40pxDefaultSize: true,
+    __nextHasNoMarginBottom: true
   });
 }
 
@@ -473,19 +485,20 @@ function CreatePatternModal({
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.__experimentalVStack, {
     spacing: "5"
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.TextControl, {
-    __nextHasNoMarginBottom: true,
     label: (0,external_wp_i18n_namespaceObject.__)('Name'),
     value: title,
     onChange: setTitle,
     placeholder: (0,external_wp_i18n_namespaceObject.__)('My pattern'),
-    className: "patterns-create-modal__name-input"
+    className: "patterns-create-modal__name-input",
+    __nextHasNoMarginBottom: true,
+    __next40pxDefaultSize: true
   }), (0,external_React_namespaceObject.createElement)(CategorySelector, {
     categoryTerms: categoryTerms,
     onChange: setCategoryTerms,
     categoryMap: categoryMap
   }), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.ToggleControl, {
-    label: (0,external_wp_i18n_namespaceObject.__)('Synced'),
-    help: (0,external_wp_i18n_namespaceObject.__)('Editing the pattern will update it anywhere it is used.'),
+    label: (0,external_wp_i18n_namespaceObject._x)('Synced', 'Option that makes an individual pattern synchronized'),
+    help: (0,external_wp_i18n_namespaceObject.__)('Sync this pattern across multiple locations.'),
     checked: syncType === PATTERN_SYNC_TYPES.full,
     onChange: () => {
       setSyncType(syncType === PATTERN_SYNC_TYPES.full ? PATTERN_SYNC_TYPES.unsynced : PATTERN_SYNC_TYPES.full);
@@ -493,12 +506,14 @@ function CreatePatternModal({
   }), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.__experimentalHStack, {
     justify: "right"
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "tertiary",
     onClick: () => {
       onClose();
       setTitle('');
     }
   }, (0,external_wp_i18n_namespaceObject.__)('Cancel')), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "primary",
     type: "submit",
     "aria-disabled": !title || isSaving,
@@ -522,8 +537,8 @@ function CreatePatternModal({
 
 
 function getTermLabels(pattern, categories) {
-  // Theme patterns don't have an id and rely on core pattern categories.
-  if (!pattern.id) {
+  // Theme patterns rely on core pattern categories.
+  if (pattern.type !== PATTERN_TYPES.user) {
     return categories.core?.filter(category => pattern.categories.includes(category.name)).map(category => category.label);
   }
   return categories.user?.filter(category => pattern.wp_pattern_category.includes(category.id)).map(category => category.label);
@@ -552,7 +567,7 @@ function DuplicatePatternModal({
   const duplicatedProps = {
     content: pattern.content,
     defaultCategories: getTermLabels(pattern, categories),
-    defaultSyncType: !pattern.id // Theme patterns don't have an ID.
+    defaultSyncType: pattern.type !== PATTERN_TYPES.user // Theme patterns are unsynced by default.
     ? PATTERN_SYNC_TYPES.unsynced : pattern.wp_pattern_sync_status || PATTERN_SYNC_TYPES.full,
     defaultTitle: (0,external_wp_i18n_namespaceObject.sprintf)( /* translators: %s: Existing pattern title */
     (0,external_wp_i18n_namespaceObject.__)('%s (Copy)'), typeof pattern.title === 'string' ? pattern.title : pattern.title.raw)
@@ -656,6 +671,7 @@ function RenamePatternModal({
     spacing: "5"
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.TextControl, {
     __nextHasNoMarginBottom: true,
+    __next40pxDefaultSize: true,
     label: (0,external_wp_i18n_namespaceObject.__)('Name'),
     value: name,
     onChange: setName,
@@ -663,9 +679,11 @@ function RenamePatternModal({
   }), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.__experimentalHStack, {
     justify: "right"
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "tertiary",
     onClick: onRequestClose
   }, (0,external_wp_i18n_namespaceObject.__)('Cancel')), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "primary",
     type: "submit"
   }, (0,external_wp_i18n_namespaceObject.__)('Save'))))));
@@ -712,14 +730,16 @@ const symbol = (0,external_React_namespaceObject.createElement)(external_wp_prim
 /**
  * Menu control to convert block(s) to a pattern block.
  *
- * @param {Object}   props              Component props.
- * @param {string[]} props.clientIds    Client ids of selected blocks.
- * @param {string}   props.rootClientId ID of the currently selected top-level block.
+ * @param {Object}   props                        Component props.
+ * @param {string[]} props.clientIds              Client ids of selected blocks.
+ * @param {string}   props.rootClientId           ID of the currently selected top-level block.
+ * @param {()=>void} props.closeBlockSettingsMenu Callback to close the block settings menu dropdown.
  * @return {import('react').ComponentType} The menu control or null.
  */
 function PatternConvertButton({
   clientIds,
-  rootClientId
+  rootClientId,
+  closeBlockSettingsMenu
 }) {
   const {
     createSuccessNotice
@@ -777,6 +797,7 @@ function PatternConvertButton({
       });
       replaceBlocks(clientIds, newBlock);
       setEditingPattern(newBlock.clientId, true);
+      closeBlockSettingsMenu();
     }
     createSuccessNotice(pattern.wp_pattern_sync_status === PATTERN_SYNC_TYPES.unsynced ? (0,external_wp_i18n_namespaceObject.sprintf)(
     // translators: %s: the name the user has given to the pattern.
@@ -833,7 +854,6 @@ function PatternsManageButton({
   const {
     canRemove,
     isVisible,
-    innerBlockCount,
     managePatternsUrl
   } = (0,external_wp_data_namespaceObject.useSelect)(select => {
     const {
@@ -870,11 +890,11 @@ function PatternsManageButton({
   if (!isVisible) {
     return null;
   }
-  return (0,external_React_namespaceObject.createElement)(external_React_namespaceObject.Fragment, null, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.MenuItem, {
-    href: managePatternsUrl
-  }, (0,external_wp_i18n_namespaceObject.__)('Manage patterns')), canRemove && (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.MenuItem, {
+  return (0,external_React_namespaceObject.createElement)(external_React_namespaceObject.Fragment, null, canRemove && (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.MenuItem, {
     onClick: () => convertSyncedPatternToStatic(clientId)
-  }, innerBlockCount > 1 ? (0,external_wp_i18n_namespaceObject.__)('Detach patterns') : (0,external_wp_i18n_namespaceObject.__)('Detach pattern')));
+  }, (0,external_wp_i18n_namespaceObject.__)('Detach')), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.MenuItem, {
+    href: managePatternsUrl
+  }, (0,external_wp_i18n_namespaceObject.__)('Manage patterns')));
 }
 /* harmony default export */ var patterns_manage_button = (PatternsManageButton);
 
@@ -894,10 +914,12 @@ function PatternsMenuItems({
   rootClientId
 }) {
   return (0,external_React_namespaceObject.createElement)(external_wp_blockEditor_namespaceObject.BlockSettingsMenuControls, null, ({
-    selectedClientIds
+    selectedClientIds,
+    onClose
   }) => (0,external_React_namespaceObject.createElement)(external_React_namespaceObject.Fragment, null, (0,external_React_namespaceObject.createElement)(PatternConvertButton, {
     clientIds: selectedClientIds,
-    rootClientId: rootClientId
+    rootClientId: rootClientId,
+    closeBlockSettingsMenu: onClose
   }), selectedClientIds.length === 1 && (0,external_React_namespaceObject.createElement)(patterns_manage_button, {
     clientId: selectedClientIds[0]
   })));
@@ -1023,6 +1045,7 @@ function RenamePatternCategoryModal({
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.TextControl, {
     ref: textControlRef,
     __nextHasNoMarginBottom: true,
+    __next40pxDefaultSize: true,
     label: (0,external_wp_i18n_namespaceObject.__)('Name'),
     value: name,
     onChange: onChange,
@@ -1034,9 +1057,11 @@ function RenamePatternCategoryModal({
   }, validationMessage)), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.__experimentalHStack, {
     justify: "right"
   }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "tertiary",
     onClick: onRequestClose
   }, (0,external_wp_i18n_namespaceObject.__)('Cancel')), (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.Button, {
+    __next40pxDefaultSize: true,
     variant: "primary",
     type: "submit",
     "aria-disabled": !name || name === category.name || isSaving,
@@ -1044,10 +1069,131 @@ function RenamePatternCategoryModal({
   }, (0,external_wp_i18n_namespaceObject.__)('Save'))))));
 }
 
+;// CONCATENATED MODULE: ./node_modules/nanoid/index.browser.js
+
+let random = bytes => crypto.getRandomValues(new Uint8Array(bytes))
+let customRandom = (alphabet, defaultSize, getRandom) => {
+  let mask = (2 << (Math.log(alphabet.length - 1) / Math.LN2)) - 1
+  let step = -~((1.6 * mask * defaultSize) / alphabet.length)
+  return (size = defaultSize) => {
+    let id = ''
+    while (true) {
+      let bytes = getRandom(step)
+      let j = step
+      while (j--) {
+        id += alphabet[bytes[j] & mask] || ''
+        if (id.length === size) return id
+      }
+    }
+  }
+}
+let customAlphabet = (alphabet, size = 21) =>
+  customRandom(alphabet, size, random)
+let nanoid = (size = 21) =>
+  crypto.getRandomValues(new Uint8Array(size)).reduce((id, byte) => {
+    byte &= 63
+    if (byte < 36) {
+      id += byte.toString(36)
+    } else if (byte < 62) {
+      id += (byte - 26).toString(36).toUpperCase()
+    } else if (byte > 62) {
+      id += '-'
+    } else {
+      id += '_'
+    }
+    return id
+  }, '')
+
+
+;// CONCATENATED MODULE: ./packages/patterns/build-module/components/partial-syncing-controls.js
+
+/**
+ * External dependencies
+ */
+
+
+/**
+ * WordPress dependencies
+ */
+
+
+
+
+/**
+ * Internal dependencies
+ */
+
+function PartialSyncingControls({
+  name,
+  attributes,
+  setAttributes
+}) {
+  const syncedAttributes = PARTIAL_SYNCING_SUPPORTED_BLOCKS[name];
+  function updateConnections(attributeName, isChecked) {
+    if (!isChecked) {
+      let updatedConnections = {
+        ...attributes.connections,
+        attributes: {
+          ...attributes.connections?.attributes,
+          [attributeName]: undefined
+        }
+      };
+      if (Object.keys(updatedConnections.attributes).length === 1) {
+        updatedConnections.attributes = undefined;
+      }
+      if (Object.keys(updatedConnections).length === 1 && updateConnections.attributes === undefined) {
+        updatedConnections = undefined;
+      }
+      setAttributes({
+        connections: updatedConnections
+      });
+      return;
+    }
+    const updatedConnections = {
+      ...attributes.connections,
+      attributes: {
+        ...attributes.connections?.attributes,
+        [attributeName]: {
+          source: 'pattern_attributes'
+        }
+      }
+    };
+    if (typeof attributes.metadata?.id === 'string') {
+      setAttributes({
+        connections: updatedConnections
+      });
+      return;
+    }
+    const id = nanoid(6);
+    setAttributes({
+      connections: updatedConnections,
+      metadata: {
+        ...attributes.metadata,
+        id
+      }
+    });
+  }
+  return (0,external_React_namespaceObject.createElement)(external_wp_blockEditor_namespaceObject.InspectorControls, {
+    group: "advanced"
+  }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.BaseControl, {
+    __nextHasNoMarginBottom: true
+  }, (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.BaseControl.VisualLabel, null, (0,external_wp_i18n_namespaceObject.__)('Synced attributes')), Object.entries(syncedAttributes).map(([attributeName, label]) => (0,external_React_namespaceObject.createElement)(external_wp_components_namespaceObject.CheckboxControl, {
+    key: attributeName,
+    __nextHasNoMarginBottom: true,
+    label: label,
+    checked: attributes.connections?.attributes?.[attributeName]?.source === 'pattern_attributes',
+    onChange: isChecked => {
+      updateConnections(attributeName, isChecked);
+    }
+  }))));
+}
+/* harmony default export */ var partial_syncing_controls = (PartialSyncingControls);
+
 ;// CONCATENATED MODULE: ./packages/patterns/build-module/private-apis.js
 /**
  * Internal dependencies
  */
+
 
 
 
@@ -1062,11 +1208,13 @@ lock(privateApis, {
   RenamePatternModal: RenamePatternModal,
   PatternsMenuItems: PatternsMenuItems,
   RenamePatternCategoryModal: RenamePatternCategoryModal,
+  PartialSyncingControls: partial_syncing_controls,
   PATTERN_TYPES: PATTERN_TYPES,
   PATTERN_DEFAULT_CATEGORY: PATTERN_DEFAULT_CATEGORY,
   PATTERN_USER_CATEGORY: PATTERN_USER_CATEGORY,
-  PATTERN_CORE_SOURCES: PATTERN_CORE_SOURCES,
-  PATTERN_SYNC_TYPES: PATTERN_SYNC_TYPES
+  EXCLUDED_PATTERN_SOURCES: EXCLUDED_PATTERN_SOURCES,
+  PATTERN_SYNC_TYPES: PATTERN_SYNC_TYPES,
+  PARTIAL_SYNCING_SUPPORTED_BLOCKS: PARTIAL_SYNCING_SUPPORTED_BLOCKS
 });
 
 ;// CONCATENATED MODULE: ./packages/patterns/build-module/index.js
