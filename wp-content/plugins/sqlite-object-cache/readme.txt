@@ -4,9 +4,9 @@ Contributors: OllieJones
 Tags: cache, sqlite, performance
 Requires at least: 5.5
 Requires PHP: 5.6
-Tested up to: 6.3
-Version: 1.3.5
-Stable tag: 1.3.5
+Tested up to: 6.4.1
+Version: 1.3.7
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Github Plugin URI: https://github.com/OllieJones/sqlite-object-cache
@@ -52,6 +52,12 @@ The plugin offers optional settings for your `wp-config.php` file. If you change
 = How much faster will this make my site? =
 
 Exactly predicting each site's speedup is not possible. Still, benchmarking results are promising. Please see [this](https://www.plumislandmedia.net/wordpress-plugins/sqlite-object-cache/benchmarks/). If you run a benchmark, please let the author know by leaving a comment on that page or using the [support forum](https://wordpress.org/support/plugin/sqlite-object-cache/).
+
+= What Cached Data Size should I use for my site? =
+
+The default setting for Cached Data Size is 4 MiB. This plugin allows the actual cached data size to grow larger than that, and occasionally removes old data to trim back the size to the setting. Take a look at the Statistics page. If your actual cached data setting is consistently larger than the setting, double the setting.
+
+If you operate a large and busy site, try an initial setting of 32 MiB, then adjust it based on the growth of the actual size.
 
 = What is SQLite? =
 
@@ -141,13 +147,15 @@ causes your object cache data to go into the `/tmp` folder in a file named `mysi
 
 `define( 'WP_SQLITE_OBJECT_CACHE_MMAP_SIZE', 32 );`
 
+Notice that using memory-mapped I/O may not help performance in the highly concurrent environment of a busy web server.
+
 = I sometimes get timeout errors from SQLite. How can I fix them? =
 
 Some sites occasionally generate error messages looking like this one:
 
 `Unable to execute statement: database is locked in /var/www/wp-content/object-cache.php:1234`
 
-This can happen if your server places your WordPress files on network-attached storage (that is, on a network drive). To solve this, store your cached data on a locally attached drive. See the question about storing your data in a more secure place.
+This can happen if your server places your WordPress files on network-attached storage (that is, on a network drive). To solve this, store your cached data on a locally attached drive. See the question about storing your data in a more secure place. It also can happen in a very busy site.
 
 = Why do I get errors when I use WP-CLI to administer my site? =
 
@@ -181,6 +189,17 @@ Please look for more questions and answers [here](https://www.plumislandmedia.ne
 
 == Changelog ==
 
+= 1.3.7 =
+
+Bug fix: Not all versions of SQLite can do DELETE ... LIMIT, so do transaction-size-limited DELETEs a different way.
+
+= 1.3.6 =
+
+* Clean up in chunks in an attempt to reduce contention delays and timeouts.
+* Do PRAGMA wal_checkpoint(RESTART) when cleaning up, and also occasionally, to prevent the write-ahead log from growing without bound on busy systems.
+* Retry three times if cache updates time out.
+* Increase default cache size to 16MiB for new users.
+
 = 1.3.5 =
 
 * php 8.1, php 8.2 compatibility.
@@ -199,8 +218,6 @@ Please look for more questions and answers [here](https://www.plumislandmedia.ne
 
 == Upgrade Notice ==
 
-This release corrects some php8 language incompatibilities.
+This release attempts to reduce cache timeouts by doing cleanup operations in chunks, and by retrying timed-out cache update operations. It also does PRAGMA wal_checkpoint(RESTART) when cleaning up, and also occasionally, to prevent the write-ahead log from growing without bound on busy systems.
 
-It correctly handles other plugins that continue using WP_Cache after WordPress core closes it.
-
-Thanks, dear users, especially @bourgesloic, @spacedmonkey, @spaceling and @ss88_uk, for letting me know about errors you found, and for your patience as I figure this out. All remaining errors are solely the responsibility of the author.
+Thanks, dear users, especially @bourgesloic, @spacedmonkey, @spaceling, @ss88_uk, and @wabetainfo, for letting me know about defects you found, and for your patience as I figure this out. All remaining errors are solely the responsibility of the author.

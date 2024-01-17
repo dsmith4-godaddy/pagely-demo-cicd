@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: SQLite Object Cache (Drop-in)
- * Version: 1.3.5
+ * Version: 1.3.7
  * Note: This Version number must match the one in SQLite_Object_Cache::_construct.
  * Plugin URI: https://wordpress.org/plugins/sqlite-object-cache/
  * Description: A persistent object cache backend powered by SQLite3.
@@ -10,8 +10,8 @@
  * License: GPLv2+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Requires PHP: 5.6
- * Tested up to: 6.3
- * Stable tag: 1.3.5
+ * Tested up to: 6.4.1
+ * Stable tag: 1.3.7
  *
  * NOTE: This uses the file .../wp-content/.ht.object_cache.sqlite
  * and the associated files .../wp-content/.ht.object_cache.sqlite-shm
@@ -64,19 +64,18 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
    *
    * @since 0.1.0
    */
-  class WP_Object_Cache
-  {
-    const OBJECT_STATS_TABLE        = 'object_stats';
-    const OBJECT_CACHE_TABLE        = 'object_cache';
+  class WP_Object_Cache {
+    const OBJECT_STATS_TABLE = 'object_stats';
+    const OBJECT_CACHE_TABLE = 'object_cache';
     const NOEXPIRE_TIMESTAMP_OFFSET = 500000000000;
-    const INTKEY_LENGTH             = 6;
-    const MMAP_SIZE                 = 0.0;
-    const INTKEY_ERODE_GAPS         = 2;
-    const INTKEY_SENTINEL           = "\x1f"; /* Only one character allowed here. */
-    const SQLITE_TIMEOUT            = 5000;
-    const SQLITE_FILENAME           = '.ht.object-cache.sqlite';
-    const JOURNAL_MODE              = 'WAL';  /* or 'MEMORY' */
-    const TRANSACTION_SIZE_LIMIT    = 32;
+    const INTKEY_LENGTH = 6;
+    const MMAP_SIZE = 0.0;
+    const INTKEY_ERODE_GAPS = 2;
+    const INTKEY_SENTINEL = "\x1f"; /* Only one character allowed here. */
+    const SQLITE_TIMEOUT = 5000;
+    const SQLITE_FILENAME = '.ht.object-cache.sqlite';
+    const JOURNAL_MODE = 'WAL';  /* or 'MEMORY' */
+    const TRANSACTION_SIZE_LIMIT = 64;
 
     /**
      * @var bool True if a transaction is active.
@@ -286,12 +285,6 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      */
     private $has_hrtime;
     /**
-     * Flag.
-     *
-     * @var bool true if microtime is available.
-     */
-    private $has_microtime;
-    /**
      * The expiration time of non-expiring cache entries has this added to the timestamp.
      *
      * This is a sentinel value, marking a non-expiring cache entry AND
@@ -328,6 +321,11 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      *
      * @var array[float]
      */
+    /**
+     * The times for individual checkpoint -- PRAGMA wal_checkpoint(RESTART) -- times
+     * @var array
+     */
+    private $checkpoint_times = array();
     private $get_multiple_times = array();
     /**
      * The times for individual get_multiple operations.
@@ -400,9 +398,8 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
 
       $this->cache_group_types();
 
-      $this->has_hrtime    = function_exists( 'hrtime' );
-      $this->has_microtime = function_exists( 'microtime' );
-      $this->has_igbinary  = function_exists( 'igbinary_serialize' );
+      $this->has_hrtime   = function_exists( 'hrtime' );
+      $this->has_igbinary = function_exists( 'igbinary_serialize' );
 
       $this->sqlite_path = $this->create_database_path();
 
@@ -415,25 +412,44 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         : self::JOURNAL_MODE;
 
       $this->erode_gaps = defined( 'WP_SQLITE_OBJECT_CACHE_INTKEY_ERODE_GAPS' )
-        ? (int)WP_SQLITE_OBJECT_CACHE_INTKEY_ERODE_GAPS
+        ? (int) WP_SQLITE_OBJECT_CACHE_INTKEY_ERODE_GAPS
         : self::INTKEY_ERODE_GAPS;
 
       $this->intkey_length = defined( 'WP_SQLITE_OBJECT_CACHE_INTKEY_LENGTH' )
-        ? (int)WP_SQLITE_OBJECT_CACHE_INTKEY_LENGTH
+        ? (int) WP_SQLITE_OBJECT_CACHE_INTKEY_LENGTH
         : self::INTKEY_LENGTH;
 
-      $this->intkey_max = - 1 + (int)str_pad( '1', 1 + $this->intkey_length, 0, STR_PAD_RIGHT );
+      $this->intkey_max = - 1 + (int) str_pad( '1', 1 + $this->intkey_length, 0, STR_PAD_RIGHT );
 
       $this->mmap_size = defined( 'WP_SQLITE_OBJECT_CACHE_MMAP_SIZE' )
-        ? (int)WP_SQLITE_OBJECT_CACHE_MMAP_SIZE
+        ? (int) WP_SQLITE_OBJECT_CACHE_MMAP_SIZE
         : self::MMAP_SIZE;
-      $this->mmap_size = (int)$this->mmap_size * 1024 * 1024;
+      $this->mmap_size = (int) $this->mmap_size * 1024 * 1024;
 
       $this->multisite                 = is_multisite();
       $this->blog_prefix               = $this->multisite ? get_current_blog_id() . ':' : '';
       $this->cache_table_name          = self::OBJECT_CACHE_TABLE;
       $this->noexpire_timestamp_offset = self::NOEXPIRE_TIMESTAMP_OFFSET;
       $this->open_connection();
+    }
+
+    /**
+     * Load translations early if necessary and possible.
+     *
+     * @return bool
+     */
+    private static function translationsLoaded() {
+      $translations = function_exists( '__' );
+      try {
+        if ( ! $translations ) {
+          wp_load_translations_early();
+          $translations = function_exists( '__' );
+        }
+      } catch ( Exception $ex ) {
+        $translations = false;
+      }
+
+      return $translations;
     }
 
     /**
@@ -511,16 +527,10 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      */
     public static function drop_dead( $msg = null ) {
       if ( ! $msg ) {
-        try {
-          if ( ! function_exists( '__' ) ) {
-            wp_load_translations_early();
-          }
-          $msg =
-            __( 'The SQLite Object Cache temporarily failed. Please try again now.', 'sqlite-object-cache' );
-        } catch ( Exception $ex ) {
-          /* Can't load translations for some reason */
-          $msg = 'The SQLite Object Cache temporarily failed. Please try again now.';
-        }
+        $translations = self::translationsLoaded();
+        $msg          = $translations
+          ? __( 'The SQLite Object Cache temporarily failed. Please try again now.', 'sqlite-object-cache' )
+          : 'The SQLite Object Cache temporarily failed. Please try again now.';
       }
       wp_die( esc_html( $msg ) );
     }
@@ -539,6 +549,8 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $msgs []       = 'SQLite Object Cache:';
       $msgs []       = $this->sqlite_get_version();
       $msgs []       = $this->has_igbinary ? 'igbinary:' : 'no igbinary:';
+      $msgs []       = 'php ' . PHP_VERSION . ':';
+      $msgs []       = $_SERVER['SERVER_SOFTWARE'] . ':';
       $msgs []       = $msg;
       if ( $this->sqlite ) {
         if ( $this->sqlite->lastErrorMsg() ) {
@@ -563,9 +575,8 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       if ( $this->sqlite ) {
         return;
       }
-      $max_retries = 3;
-      $retries     = 0;
-      while ( ++ $retries <= $max_retries ) {
+      $retries = 3;
+      while ( $retries -- > 0 ) {
         try {
           $this->actual_open_connection();
 
@@ -603,7 +614,6 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $this->sqlite->exec( "PRAGMA journal_mode = $this->sqlite_journal_mode" );
       $this->sqlite->exec( "PRAGMA encoding = 'UTF-8'" );
       $this->sqlite->exec( 'PRAGMA case_sensitive_like = true' );
-
       $this->create_object_cache_table();
       $this->prepare_statements( $this->cache_table_name );
 
@@ -617,15 +627,11 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      */
     private function time_usec() {
       if ( $this->has_hrtime ) {
-        /** @noinspection PhpMethodParametersCountMismatchInspection */
         /** @noinspection PhpElementIsNotAvailableInCurrentPhpVersionInspection */
         return hrtime( true ) * 0.001;
       }
-      if ( $this->has_microtime ) {
-        return microtime( true );
-      }
 
-      return time() * 1000000.0;
+      return microtime( true );
     }
 
     /**
@@ -784,20 +790,20 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      */
     public static function has_sqlite( $directory = WP_CONTENT_DIR ) {
       if ( ! wp_is_writable( $directory ) ) {
-        if ( ! function_exists( '__' ) ) {
-          wp_load_translations_early();
-        }
+        $translations = self::translationsLoaded();
 
-        //TODO THIS goes someplace else
-        return sprintf( /* translators: 1: WP_CONTENT_DIR */ __( 'The SQLite Object Cache cannot be activated because the %s directory is not writable.', 'sqlite-object-cache' ), $directory );
+        return $translations
+          ? sprintf( /* translators: 1: WP_CONTENT_DIR */ __( 'The SQLite Object Cache cannot be activated because the %s directory is not writable.', 'sqlite-object-cache' ), $directory )
+          : sprintf( 'The SQLite Object Cache cannot be activated because the %s directory is not writable.', $directory );
+
       }
 
       if ( ! class_exists( 'SQLite3' ) || ! extension_loaded( 'sqlite3' ) ) {
-        if ( ! function_exists( '__' ) ) {
-          wp_load_translations_early();
-        }
+        $translations = self::translationsLoaded();
 
-        return __( 'The SQLite Object Cache cannot be activated because the SQLite3 extension is not loaded.', 'sqlite-object-cache' );
+        return $translations
+          ? __( 'The SQLite Object Cache cannot be activated because the SQLite3 extension is not loaded.', 'sqlite-object-cache' )
+          : 'The SQLite Object Cache cannot be activated because the SQLite3 extension is not loaded.';
       }
 
       return true;
@@ -867,6 +873,10 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         if ( $this->is_sample() ) {
           $this->capture( $this->monitoring_options );
         }
+        /* Once in a while checkpoint the whole WAL log, so it doesn't grow without bound on a busy site. */
+        if ( 1 === rand( 1, 5000 ) ) {
+          $this->checkpoint();
+        }
       }
 
       return true;
@@ -899,13 +909,19 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         if ( ! is_numeric( $age ) ) {
           /* @noinspection SqlWithoutWhere */
           $sql = "DELETE FROM $object_stats;";
+          $this->sqlite->exec( $sql );
         } else {
-          $expires = (int)( time() - $age );
-          /* @noinspection SqlResolve */
-          $sql =
-            "DELETE FROM $object_stats WHERE timestamp < $expires;";
+          $expires = (int) ( time() - $age );
+          $limit   = self::TRANSACTION_SIZE_LIMIT;
+          $hits    = $limit;
+          while ( $hits >= $limit ) {
+            /* @noinspection SqlResolve */
+
+            $sql = "DELETE FROM $object_stats WHERE timestamp IN (SELECT timestamp FROM $object_stats WHERE timestamp < $expires LIMIT $limit);";
+            $this->sqlite->exec( $sql );
+            $hits = $this->sqlite->changes();
+          }
         }
-        $this->sqlite->exec( $sql );
       } catch ( Exception $ex ) {
         $this->error_log( 'SQLite Object Cache exception resetting statistics. ', $ex );
       }
@@ -914,30 +930,28 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
     /**
      * Remove old entries.
      *
-     * @param bool $use_transaction True if the cleanup should be inside BEGIN / COMMIT.
-     *
      * @return boolean True if any items were removed.
      * @noinspection SqlResolve
      */
-    public function sqlite_remove_expired( $use_transaction = true ) {
+    public function sqlite_remove_expired() {
       $items_removed = 0;
       try {
-        if ( $use_transaction ) {
-          $this->sqlite->exec( 'BEGIN' );
-        }
+        $this->checkpoint();
+        $limit = self::TRANSACTION_SIZE_LIMIT;
+        $hit   = $limit;
+
         /* Remove items with definite expirations, like transients */
-        $sql  = "DELETE FROM $this->cache_table_name WHERE expires <= :now;";
-        $stmt = $this->sqlite->prepare( $sql );
-        $stmt->bindValue( ':now', time(), SQLITE3_INTEGER );
-        $result        = $stmt->execute();
-        $items_removed = $this->sqlite->changes();
-        $result->finalize();
-        if ( $use_transaction ) {
-          $this->sqlite->exec( 'COMMIT' );
+        $sql = 'DELETE FROM ' . $this->cache_table_name . ' WHERE name IN (SELECT name FROM ' . $this->cache_table_name . ' WHERE expires <= ' . time() . ' LIMIT ' . $limit . ')';
+
+        while ( $hit >= $limit ) {
+          $this->sqlite->exec( $sql );
+          $hit           = $this->sqlite->changes();
+          $items_removed += $hit;
         }
       } catch ( Exception $ex ) {
-        $this->error_log( 'sqlite_clean_up_cache', $ex );
+        $this->error_log( 'sqlite_remove_expired', $ex );
       }
+
       return $items_removed > 0;
     }
 
@@ -954,7 +968,8 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $row          = $resultset->fetchArray( SQLITE3_NUM );
       $result       = $row[0];
       $resultset->finalize();
-      return (int)$result;
+
+      return (int) $result;
     }
 
     /**
@@ -977,7 +992,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         if ( ! $row ) {
           break;
         }
-        $row = (object)$row;
+        $row = (object) $row;
         if ( $timestamps ) {
           $expires = $row->expires;
           if ( $expires >= self::NOEXPIRE_TIMESTAMP_OFFSET ) {
@@ -1007,10 +1022,11 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         $stmt      = $this->sqlite->prepare( $query );
         $resultset = $stmt->execute();
         $row       = $resultset->fetchArray( SQLITE3_NUM );
-        $val       = (int)$row[0];
+        $val       = (int) $row[0];
         $resultset->finalize();
         $result [ $item ] = $val;
       }
+
       return $result;
     }
 
@@ -1029,6 +1045,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $sql          =
         "SELECT SUM(LENGTH(value) + LENGTH(name) + 6) length, (expires/16)*16 expires FROM $object_cache WHERE expires >= $offset GROUP BY (expires/16) ORDER BY 2";
       $stmt         = $this->sqlite->prepare( $sql );
+
       return $stmt->execute();
     }
 
@@ -1051,7 +1068,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
           break;
         }
         $value = $this->maybe_unserialize( $row[0] );
-        yield (object)$value;
+        yield (object) $value;
       }
       $resultset->finalize();
     }
@@ -1081,6 +1098,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         'get_multiple_keys' => $this->get_multiple_keys,
         'inserts'           => $this->insert_times,
         'deletes'           => $this->delete_times,
+        'checkpoints'       => $this->checkpoint_times,
         'DBMSqueries'       => $wpdb->num_queries,
         'RAM'               => memory_get_peak_usage( true ),
       );
@@ -1111,6 +1129,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       }
       $v                    = SQLite3::version();
       $this->sqlite_version = $v['versionString'];
+
       return $this->sqlite_version;
     }
 
@@ -1127,7 +1146,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
        *
        * @since 2.1.7
        */
-      $groups = apply_filters( 'sqlite_object_cache_add_non_persistent_groups', (array)$groups );
+      $groups = apply_filters( 'sqlite_object_cache_add_non_persistent_groups', (array) $groups );
 
       $this->ignored_groups = array_unique( array_merge( $this->ignored_groups, $groups ) );
       $this->cache_group_types();
@@ -1254,8 +1273,9 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $name = $this->normalize_name( $key, $group );
 
       if ( $this->cache_item_not_exists( $name ) ) {
-        return $this->set( $key, $data, $group, (int)$expire );
+        return $this->set( $key, $data, $group, (int) $expire );
       }
+
       return false;
     }
 
@@ -1342,6 +1362,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       if ( array_key_exists( $name, $this->not_in_persistent_cache ) ) {
         return true;
       }
+
       return ! $this->cache_item_exists( $name );
     }
 
@@ -1374,12 +1395,13 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         $result->finalize();
       } catch ( Exception $ex ) {
         unset( $this->not_in_persistent_cache [ $name ] );
-        $this->error_log( 'getone', $ex );
+        $this->error_log( 'get_by_name', $ex );
         $this->delete_offending_files();
         self::drop_dead();
       }
 
       $this->select_times[] = $this->time_usec() - $start;
+
       return $data;
     }
 
@@ -1428,7 +1450,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
     }
 
     /**
-     * Write to the persistent cache.
+     * Write to the persistent cache, with timeout retry.
      *
      * @param string $name What to call the contents in the cache.
      * @param mixed $data The contents to store in the cache.
@@ -1437,51 +1459,76 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      * @return void
      */
     private function put_by_name( $name, $data, $expire ) {
-      try {
-        $start   = $this->time_usec();
-        $value   = $this->maybe_serialize( $data );
-        $expires = $expire ?: $this->noexpire_timestamp_offset;
-        if ( $this->upsertone ) {
-          $stmt = $this->upsertone;
-          $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
-          $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
-          $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
-          $result = $stmt->execute();
-          $result->finalize();
-        } else {
-          /* Pre-upsert version (pre- 3.24) of SQLite,
-           * Need to try update, then do insert if need be.
-           * Race conditions are possible, hence BEGIN / COMMIT
-           */
-          if ( ! $this->transaction_active ) {
-            $this->sqlite->exec( 'BEGIN' );
-          }
-          $stmt = $this->updateone;
-          $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
-          $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
-          $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
-          $result = $stmt->execute();
-          $result->finalize();
-          if ( 0 === $this->sqlite->changes() ) {
-            /* Updated zero rows, so we need an insert. */
-            $stmt = $this->insertone;
-            $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
-            $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
-            $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
-            $result = $stmt->execute();
-            $result->finalize();
-          }
-          if ( ! $this->transaction_active ) {
-            $this->sqlite->exec( 'COMMIT' );
+      $exception = null;
+      $start     = $this->time_usec();
+      $value     = $this->maybe_serialize( $data );
+      $expires   = $expire ?: $this->noexpire_timestamp_offset;
+      $retries   = 3;
+      while ( $retries -- > 0 ) {
+        try {
+          $this->actual_put_by_name( $name, $value, $expires );
+          unset( $this->not_in_persistent_cache[ $name ] );
+          $this->insert_times[] = $this->time_usec() - $start;
+
+          return;
+        } catch ( Exception $ex ) {
+          $exception = $ex;
+          if ( ! str_contains( $ex->getMessage(), 'database is locked' ) || 5 !== $this->sqlite->lastErrorCode() ) {
+            break;
           }
         }
-        unset( $this->not_in_persistent_cache[ $name ] );
-        /* track how long it took. */
-        $this->insert_times[] = $this->time_usec() - $start;
-      } catch ( Exception $ex ) {
-        $this->error_log( 'handle_put', $ex );
+        sleep( 1 );
+      }
+      if ( $exception ) {
+        $this->error_log( 'put_by_name', $exception );
         $this->delete_offending_files();
         self::drop_dead();
+      }
+    }
+
+    /**
+     * Actually write to the cache.
+     *
+     * @param string $name What to call the contents in the cache.
+     * @param string $value The seriolized value.
+     * @param int $expires Expiration time.
+     *
+     * @return void
+     */
+    private function actuaL_put_by_name( $name, $value, $expires ) {
+      if ( $this->upsertone ) {
+        $stmt = $this->upsertone;
+        $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
+        $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
+        $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
+        $result = $stmt->execute();
+        $result->finalize();
+      } else {
+        /* Pre-upsert version (pre- 3.24) of SQLite,
+         * Need to try update, then do insert if need be.
+         * Race conditions are possible, hence BEGIN / COMMIT
+         */
+        if ( ! $this->transaction_active ) {
+          $this->sqlite->exec( 'BEGIN' );
+        }
+        $stmt = $this->updateone;
+        $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
+        $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
+        $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
+        $result = $stmt->execute();
+        $result->finalize();
+        if ( 0 === $this->sqlite->changes() ) {
+          /* Updated zero rows, so we need an insert. */
+          $stmt = $this->insertone;
+          $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
+          $stmt->bindValue( ':value', $value, SQLITE3_BLOB );
+          $stmt->bindValue( ':expires', $expires, SQLITE3_INTEGER );
+          $result = $stmt->execute();
+          $result->finalize();
+        }
+        if ( ! $this->transaction_active ) {
+          $this->sqlite->exec( 'COMMIT' );
+        }
       }
     }
 
@@ -1511,7 +1558,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         return false;
       }
 
-      return $this->set( $key, $data, $group, (int)$expire );
+      return $this->set( $key, $data, $group, (int) $expire );
     }
 
     /**
@@ -1577,6 +1624,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         foreach ( $input_keys as $key ) {
           $values[ $key ] = $this->get( $key, $group, $force );
         }
+
         return $values;
       }
       $start = $this->time_usec();
@@ -1602,14 +1650,15 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         foreach ( $keys_not_found as $key => $name ) {
           $values[ $key ] = $this->get_by_normalized_name( $name );
         }
+
         return $values;
       }
       /* split into alpha and numeric keys */
       $alphakeys = array();
       $intkeys   = array();
       foreach ( $keys_not_found as $key => $name ) {
-        if ( is_numeric( $key ) && (int)$key == $key && (int)$key > 0 && (int)$key <= $this->intkey_max ) {
-          $intkeys [] = (int)$key;
+        if ( is_numeric( $key ) && (int) $key == $key && (int) $key > 0 && (int) $key <= $this->intkey_max ) {
+          $intkeys [] = (int) $key;
         } else {
           $alphakeys [ $key ] = $name;
         }
@@ -1679,6 +1728,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       }
       $this->get_multiple_keys []  = count( $keys_not_found );
       $this->get_multiple_times [] = $this->time_usec() - $start;
+
       return $values;
     }
 
@@ -1691,7 +1741,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      * @return string
      */
     private function normalize_name( $key, $group ) {
-      if ( is_numeric( $key ) && (int)$key == $key && (int)$key >= 0 && (int)$key <= $this->intkey_max ) {
+      if ( is_numeric( $key ) && (int) $key == $key && (int) $key >= 0 && (int) $key <= $this->intkey_max ) {
         $key = self::INTKEY_SENTINEL . str_pad( $key, 1 + $this->intkey_length, '0', STR_PAD_LEFT );
       }
 
@@ -1701,6 +1751,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       if ( empty( $group ) ) {
         $group = 'default';
       }
+
       return $group . '|' . $key;
     }
 
@@ -1746,6 +1797,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
           $found = true;
           ++ $this->cache_hits;
           ++ $this->get_depth;
+
           return is_object( $this->cache[ $name ] ) ? clone( $this->cache[ $name ] ) : $this->cache[ $name ];
         }
       } catch ( Exception $ex ) {
@@ -1786,6 +1838,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         if ( array_key_exists( $name, $this->cache ) || $this->cache_item_exists( $name ) ) {
           ++ $this->cache_hits;
           ++ $this->get_depth;
+
           return is_object( $this->cache[ $name ] ) ? clone( $this->cache[ $name ] ) : $this->cache[ $name ];
         }
       } catch ( Exception $ex ) {
@@ -1811,7 +1864,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      *                true on success, or false if the contents were not deleted.
      * @since 6.0.0
      */
-    public function delete_multiple( array &$keys, $group = '' ) {
+    public function delete_multiple( array $keys, $group = '' ) {
       if ( 0 === count( $keys ) ) {
         return array();
       }
@@ -1858,7 +1911,6 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       $name = $this->normalize_name( $key, $group );
       unset ( $this->cache[ $name ] );
       $this->delete_by_name( $name );
-      $this->not_in_persistent_cache[ $name ] = true;
 
       return true;
     }
@@ -1904,12 +1956,19 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
           }
           $object_cache = self::OBJECT_CACHE_TABLE;
           $offset       = $this->noexpire_timestamp_offset;
-          $sql          = "DELETE FROM $object_cache WHERE expires >= $offset AND expires <= $horizon";
-          $this->sqlite->exec( $sql );
+          $limit        = self::TRANSACTION_SIZE_LIMIT;
+          $hit          = $limit;
+
+          while ( $hit >= $limit ) {
+            $sql = "DELETE FROM $object_cache WHERE name IN (SELECT name FROM $object_cache WHERE expires >= $offset AND expires <= $horizon LIMIT $limit)";
+            $this->sqlite->exec( $sql );
+            $hit = $this->sqlite->changes();
+          }
           $this->sqlite->exec( 'PRAGMA optimize;' );
         }
+        $this->checkpoint();
       } catch ( Exception $ex ) {
-        $this->delete_offending_files();
+        /* Empty, intenionally. */
       }
     }
 
@@ -1921,18 +1980,32 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      * @return void
      */
     private function delete_by_name( $name ) {
-      try {
-        $this->not_in_persistent_cache[ $name ] = true;
-        $start                                  = $this->time_usec();
-        $stmt                                   = $this->deleteone;
-        $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
-        $result = $stmt->execute();
-        $result->finalize();
-      } catch ( Exception $ex ) {
-        $this->delete_offending_files();
+      $exception                              = null;
+      $retries                                = 3;
+      $stmt                                   = $this->deleteone;
+      $this->not_in_persistent_cache[ $name ] = true;
+      $start                                  = $this->time_usec();
+      while ( $retries -- > 0 ) {
+        try {
+          $stmt->bindValue( ':name', $name, SQLITE3_TEXT );
+          $result = $stmt->execute();
+          $result->finalize();
+          $this->delete_times[] = $this->time_usec() - $start;
+
+          return;
+        } catch ( Exception $ex ) {
+          $exception = $ex;
+          if ( ! str_contains( $ex->getMessage(), 'database is locked' ) || 5 !== $this->sqlite->lastErrorCode() ) {
+            break;
+          }
+        }
+        sleep( 1 );
       }
-      /* track how long it took. */
-      $this->delete_times[] = $this->time_usec() - $start;
+      if ( $exception ) {
+        $this->error_log( 'delete_by_name', $exception );
+        $this->delete_offending_files();
+        self::drop_dead();
+      }
     }
 
     /**
@@ -1961,7 +2034,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
         $this->cache[ $name ] = 0;
       }
 
-      $offset = (int)$offset;
+      $offset = (int) $offset;
 
       $this->cache[ $name ] += $offset;
 
@@ -2012,22 +2085,26 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
             $clauses []        = "(name NOT LIKE '$unflushable_group|%')";
           }
           /* @noinspection SqlConstantCondition, SqlConstantExpression */
-          $sql =
-            'DELETE FROM ' . $this->cache_table_name . ' WHERE ' . implode( ' AND ', $clauses ) . ';';
+          $limit = self::TRANSACTION_SIZE_LIMIT;
+          $hit   = $limit;
+
+          $sql = 'DELETE FROM ' . $this->cache_table_name . ' WHERE name IN (SELECT name FROM ' . $this->cache_table_name . ' WHERE ' . implode( ' AND ', $clauses ) . ' LIMIT $limit);';
+          while ( $hit >= $limit ) {
+            $this->sqlite->exec( $sql );
+            $hit = $this->sqlite->changes();
+          }
         } else {
           /* SQLite's TRUNCATE TABLE equivalent */
-          $sql =
-            'DELETE FROM ' . $this->cache_table_name . ';';
+          $sql = 'DELETE FROM ' . $this->cache_table_name . ';';
+          $this->sqlite->exec( $sql );
         }
-        $this->sqlite->exec( $sql );
 
         if ( $vacuum ) {
           $this->sqlite->exec( 'VACUUM;' );
         }
       } catch ( Exception $ex ) {
-        $this->error_log( 'flush', $ex );
+        $this->error_log( 'flush failure, recreate cache.', $ex );
         $this->delete_offending_files();
-        self::drop_dead();
       }
 
       return true;
@@ -2076,7 +2153,6 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       } catch ( Exception $ex ) {
         $this->error_log( 'flush_group', $ex );
         $this->delete_offending_files();
-        self::drop_dead();
       }
       /* remove hints about what is in the persistent cache */
       $this->not_in_persistent_cache = array();
@@ -2090,7 +2166,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      * @param array $groups List of groups that are unflushable.
      */
     public function add_unflushable_groups( $groups ) {
-      $groups = (array)$groups;
+      $groups = (array) $groups;
 
       $this->unflushable_groups = array_unique( array_merge( $this->unflushable_groups, $groups ) );
       $this->cache_group_types();
@@ -2104,7 +2180,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      * @since 3.0.0
      */
     public function add_global_groups( $groups ) {
-      $groups = (array)$groups;
+      $groups = (array) $groups;
 
       $groups              = array_fill_keys( $groups, true );
       $this->global_groups = array_merge( $this->global_groups, $groups );
@@ -2123,7 +2199,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
      *
      */
     public function switch_to_blog( $blog_id ) {
-      $blog_id           = (int)$blog_id;
+      $blog_id           = (int) $blog_id;
       $this->blog_prefix = $this->multisite ? $blog_id . ':' : '';
     }
 
@@ -2243,6 +2319,20 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
       }
       ob_end_clean();
     }
+
+    /**
+     * Checkpoint the WAL log, incorporating it into the database.
+     *
+     * This should be done infrequently, but frequently enough so that the log doesn't just keep getting
+     * bigger in busy sites with lots of concurrency.
+     *
+     * @return void
+     */
+    private function checkpoint() {
+      $start = $this->time_usec();
+      $this->sqlite->exec( 'PRAGMA wal_checkpoint(RESTART)' );
+      $this->checkpoint_times[] = $this->time_usec() - $start;
+    }
   }
 
   /**
@@ -2293,7 +2383,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
   function wp_cache_add( $key, $data, $group = '', $expire = 0 ) {
     global $wp_object_cache;
 
-    return $wp_object_cache->add( $key, $data, $group, (int)$expire );
+    return $wp_object_cache->add( $key, $data, $group, (int) $expire );
   }
 
   /**
@@ -2337,7 +2427,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
   function wp_cache_replace( $key, $data, $group = '', $expire = 0 ) {
     global $wp_object_cache;
 
-    return $wp_object_cache->replace( $key, $data, $group, (int)$expire );
+    return $wp_object_cache->replace( $key, $data, $group, (int) $expire );
   }
 
   /**
@@ -2362,7 +2452,7 @@ if ( ! defined( 'WP_SQLITE_OBJECT_CACHE_DISABLED' ) || ! WP_SQLITE_OBJECT_CACHE_
   function wp_cache_set( $key, $data, $group = '', $expire = 0 ) {
     global $wp_object_cache;
 
-    return $wp_object_cache->set( $key, $data, $group, (int)$expire );
+    return $wp_object_cache->set( $key, $data, $group, (int) $expire );
   }
 
   /**
