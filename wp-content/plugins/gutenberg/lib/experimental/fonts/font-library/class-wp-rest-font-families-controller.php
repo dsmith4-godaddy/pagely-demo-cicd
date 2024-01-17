@@ -1,24 +1,24 @@
 <?php
 /**
- * Rest Font Library Controller.
+ * Rest Font Families Controller.
  *
- * This file contains the class for the REST API Font Library Controller.
+ * This file contains the class for the REST API Font Families Controller.
  *
  * @package    WordPress
  * @subpackage Font Library
  * @since      6.5.0
  */
 
-if ( class_exists( 'WP_REST_Font_Library_Controller' ) ) {
+if ( class_exists( 'WP_REST_Font_Families_Controller' ) ) {
 	return;
 }
 
 /**
- * Font Library Controller class.
+ * Font Families Controller class.
  *
  * @since 6.5.0
  */
-class WP_REST_Font_Library_Controller extends WP_REST_Controller {
+class WP_REST_Font_Families_Controller extends WP_REST_Posts_Controller {
 
 	/**
 	 * Constructor.
@@ -26,8 +26,9 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 	 * @since 6.5.0
 	 */
 	public function __construct() {
-		$this->rest_base = 'fonts';
+		$this->rest_base = 'font-families';
 		$this->namespace = 'wp/v2';
+		$this->post_type = 'wp_font_family';
 	}
 
 	/**
@@ -41,11 +42,23 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 			'/' . $this->rest_base,
 			array(
 				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_items' ),
+					'permission_callback' => array( $this, 'update_font_library_permissions_check' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base,
+			array(
+				array(
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'install_fonts' ),
 					'permission_callback' => array( $this, 'update_font_library_permissions_check' ),
 					'args'                => array(
-						'font_families' => array(
+						'font_family_settings' => array(
 							'required'          => true,
 							'type'              => 'string',
 							'validate_callback' => array( $this, 'validate_install_font_families' ),
@@ -67,71 +80,6 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 				),
 			)
 		);
-
-		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base . '/collections',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_font_collections' ),
-					'permission_callback' => array( $this, 'update_font_library_permissions_check' ),
-				),
-			)
-		);
-
-		register_rest_route(
-			$this->namespace,
-			'/' . $this->rest_base . '/collections' . '/(?P<id>[\/\w-]+)',
-			array(
-				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( $this, 'get_font_collection' ),
-					'permission_callback' => array( $this, 'update_font_library_permissions_check' ),
-				),
-			)
-		);
-	}
-
-	/**
-	 * Gets a font collection.
-	 *
-	 * @since 6.5.0
-	 *
-	 * @param WP_REST_Request $request Full details about the request.
-	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
-	 */
-	public function get_font_collection( $request ) {
-		$id         = $request->get_param( 'id' );
-		$collection = WP_Font_Library::get_font_collection( $id );
-		// If the collection doesn't exist returns a 404.
-		if ( is_wp_error( $collection ) ) {
-			$collection->add_data( array( 'status' => 404 ) );
-			return $collection;
-		}
-		$collection_with_data = $collection->get_data();
-		// If there was an error getting the collection data, return the error.
-		if ( is_wp_error( $collection_with_data ) ) {
-			$collection_with_data->add_data( array( 'status' => 500 ) );
-			return $collection_with_data;
-		}
-		return new WP_REST_Response( $collection_with_data );
-	}
-
-	/**
-	 * Gets the font collections available.
-	 *
-	 * @since 6.5.0
-	 *
-	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
-	 */
-	public function get_font_collections() {
-		$collections = array();
-		foreach ( WP_Font_Library::get_font_collections() as $collection ) {
-			$collections[] = $collection->get_config();
-		}
-
-		return new WP_REST_Response( $collections, 200 );
 	}
 
 	/**
@@ -143,84 +91,60 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 	 * @param array   $files         Files to install.
 	 * @return array $error_messages Array of error messages.
 	 */
-	private function get_validation_errors( $font_families, $files ) {
+	private function get_validation_errors( $font_family_settings, $files ) {
 		$error_messages = array();
 
-		if ( ! is_array( $font_families ) ) {
-			$error_messages[] = __( 'font_families should be an array of font families.', 'gutenberg' );
+		if ( ! is_array( $font_family_settings ) ) {
+			$error_messages[] = __( 'font_family_settings should be a font family definition.', 'gutenberg' );
 			return $error_messages;
 		}
 
-		// Checks if there is at least one font family.
-		if ( count( $font_families ) < 1 ) {
-			$error_messages[] = __( 'font_families should have at least one font family definition.', 'gutenberg' );
+		if (
+			! isset( $font_family_settings['slug'] ) ||
+			! isset( $font_family_settings['name'] ) ||
+			! isset( $font_family_settings['fontFamily'] )
+		) {
+			$error_messages[] = __( 'Font family should have slug, name and fontFamily properties defined.', 'gutenberg' );
+
 			return $error_messages;
 		}
 
-		for ( $family_index = 0; $family_index < count( $font_families ); $family_index++ ) {
-			$font_family = $font_families[ $family_index ];
-
-			if (
-				! isset( $font_family['slug'] ) ||
-				! isset( $font_family['name'] ) ||
-				! isset( $font_family['fontFamily'] )
-			) {
-				$error_messages[] = sprintf(
-					// translators: 1: font family index.
-					__( 'Font family [%s] should have slug, name and fontFamily properties defined.', 'gutenberg' ),
-					$family_index
-				);
+		if ( isset( $font_family_settings['fontFace'] ) ) {
+			if ( ! is_array( $font_family_settings['fontFace'] ) ) {
+				$error_messages[] = __( 'Font family should have fontFace property defined as an array.', 'gutenberg' );
 			}
 
-			if ( isset( $font_family['fontFace'] ) ) {
-				if ( ! is_array( $font_family['fontFace'] ) ) {
-					$error_messages[] = sprintf(
-						// translators: 1: font family index.
-						__( 'Font family [%s] should have fontFace property defined as an array.', 'gutenberg' ),
-						$family_index
-					);
-					continue;
-				}
+			if ( count( $font_family_settings['fontFace'] ) < 1 ) {
+				$error_messages[] = __( 'Font family should have at least one font face definition.', 'gutenberg' );
+			}
 
-				if ( count( $font_family['fontFace'] ) < 1 ) {
-					$error_messages[] = sprintf(
-						// translators: 1: font family index.
-						__( 'Font family [%s] should have at least one font face definition.', 'gutenberg' ),
-						$family_index
-					);
-				}
+			if ( ! empty( $font_family_settings['fontFace'] ) ) {
+				for ( $face_index = 0; $face_index < count( $font_family_settings['fontFace'] ); $face_index++ ) {
 
-				if ( ! empty( $font_family['fontFace'] ) ) {
-					for ( $face_index = 0; $face_index < count( $font_family['fontFace'] ); $face_index++ ) {
+					$font_face = $font_family_settings['fontFace'][ $face_index ];
+					if ( ! isset( $font_face['fontWeight'] ) || ! isset( $font_face['fontStyle'] ) ) {
+						$error_messages[] = sprintf(
+							// translators: font face index.
+							__( 'Font family Font face [%1$s] should have fontWeight and fontStyle properties defined.', 'gutenberg' ),
+							$face_index
+						);
+					}
 
-						$font_face = $font_family['fontFace'][ $face_index ];
-						if ( ! isset( $font_face['fontWeight'] ) || ! isset( $font_face['fontStyle'] ) ) {
+					if ( isset( $font_face['downloadFromUrl'] ) && isset( $font_face['uploadedFile'] ) ) {
+						$error_messages[] = sprintf(
+							// translators: font face index.
+							__( 'Font family Font face [%1$s] should have only one of the downloadFromUrl or uploadedFile properties defined and not both.', 'gutenberg' ),
+							$face_index
+						);
+					}
+
+					if ( isset( $font_face['uploadedFile'] ) ) {
+						if ( ! isset( $files[ $font_face['uploadedFile'] ] ) ) {
 							$error_messages[] = sprintf(
-								// translators: 1: font family index, 2: font face index.
-								__( 'Font family [%1$s] Font face [%2$s] should have fontWeight and fontStyle properties defined.', 'gutenberg' ),
-								$family_index,
+								// translators: font face index.
+								__( 'Font family Font face [%1$s] file is not defined in the request files.', 'gutenberg' ),
 								$face_index
 							);
-						}
-
-						if ( isset( $font_face['downloadFromUrl'] ) && isset( $font_face['uploadedFile'] ) ) {
-							$error_messages[] = sprintf(
-								// translators: 1: font family index, 2: font face index.
-								__( 'Font family [%1$s] Font face [%2$s] should have only one of the downloadFromUrl or uploadedFile properties defined and not both.', 'gutenberg' ),
-								$family_index,
-								$face_index
-							);
-						}
-
-						if ( isset( $font_face['uploadedFile'] ) ) {
-							if ( ! isset( $files[ $font_face['uploadedFile'] ] ) ) {
-								$error_messages[] = sprintf(
-									// translators: 1: font family index, 2: font face index.
-									__( 'Font family [%1$s] Font face [%2$s] file is not defined in the request files.', 'gutenberg' ),
-									$family_index,
-									$face_index
-								);
-							}
 						}
 					}
 				}
@@ -240,9 +164,9 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 	 * @return true|WP_Error True if the parameter is valid, WP_Error otherwise.
 	 */
 	public function validate_install_font_families( $param, $request ) {
-		$font_families  = json_decode( $param, true );
-		$files          = $request->get_file_params();
-		$error_messages = $this->get_validation_errors( $font_families, $files );
+		$font_family_settings = json_decode( $param, true );
+		$files                = $request->get_file_params();
+		$error_messages       = $this->get_validation_errors( $font_family_settings, $files );
 
 		if ( empty( $error_messages ) ) {
 			return true;
@@ -378,17 +302,15 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 	 *
 	 * @since 6.5.0
 	 *
-	 * @param array[] $font_families Font families to install.
+	 * @param array[] $font_family_settings Font family definition.
 	 * @return bool Whether the request needs write permissions.
 	 */
-	private function needs_write_permission( $font_families ) {
-		foreach ( $font_families as $font ) {
-			if ( isset( $font['fontFace'] ) ) {
-				foreach ( $font['fontFace'] as $face ) {
-					// If the font is being downloaded from a URL or uploaded, it needs write permissions.
-					if ( isset( $face['downloadFromUrl'] ) || isset( $face['uploadedFile'] ) ) {
-						return true;
-					}
+	private function needs_write_permission( $font_family_settings ) {
+		if ( isset( $font_family_settings['fontFace'] ) ) {
+			foreach ( $font_family_settings['fontFace'] as $face ) {
+				// If the font is being downloaded from a URL or uploaded, it needs write permissions.
+				if ( isset( $face['downloadFromUrl'] ) || isset( $face['uploadedFile'] ) ) {
+					return true;
 				}
 			}
 		}
@@ -409,20 +331,20 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 	 */
 	public function install_fonts( $request ) {
 		// Get new fonts to install.
-		$fonts_param = $request->get_param( 'font_families' );
+		$font_family_settings = $request->get_param( 'font_family_settings' );
 
 		/*
 		 * As this is receiving form data, the font families are encoded as a string.
 		 * The form data is used  because local fonts need to use that format to
 		 * attach the files in the request.
 		 */
-		$fonts_to_install = json_decode( $fonts_param, true );
+		$font_family_settings = json_decode( $font_family_settings, true );
 
 		$successes       = array();
 		$errors          = array();
 		$response_status = 200;
 
-		if ( empty( $fonts_to_install ) ) {
+		if ( empty( $font_family_settings ) ) {
 			$errors[]        = new WP_Error(
 				'no_fonts_to_install',
 				__( 'No fonts to install', 'gutenberg' )
@@ -430,7 +352,7 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 			$response_status = 400;
 		}
 
-		if ( $this->needs_write_permission( $fonts_to_install ) ) {
+		if ( $this->needs_write_permission( $font_family_settings ) ) {
 			$upload_dir = WP_Font_Library::get_fonts_dir();
 			if ( ! $this->has_upload_directory() ) {
 				if ( ! wp_mkdir_p( $upload_dir ) ) {
@@ -466,15 +388,13 @@ class WP_REST_Font_Library_Controller extends WP_REST_Controller {
 		}
 
 		// Get uploaded files (used when installing local fonts).
-		$files = $request->get_file_params();
-		foreach ( $fonts_to_install as $font_data ) {
-			$font   = new WP_Font_Family( $font_data );
-			$result = $font->install( $files );
-			if ( is_wp_error( $result ) ) {
-				$errors[] = $result;
-			} else {
-				$successes[] = $result;
-			}
+		$files  = $request->get_file_params();
+		$font   = new WP_Font_Family( $font_family_settings );
+		$result = $font->install( $files );
+		if ( is_wp_error( $result ) ) {
+			$errors[] = $result;
+		} else {
+			$successes[] = $result;
 		}
 
 		$data = array(
