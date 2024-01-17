@@ -121,7 +121,7 @@ class SQLite_Object_Cache {
 	 * @param string $file File constructor.
 	 * @param string $version Plugin version.
 	 */
-	public function __construct( $file = '', $version = '1.3.5' ) {
+	public function __construct( $file = '', $version = '1.3.7' ) {
 		$this->_version = $version;
 		$this->_token   = 'sqlite_object_cache';
 
@@ -190,7 +190,7 @@ class SQLite_Object_Cache {
 	 */
 	public function clean_job( $grace_factor = 1.0 ) {
 		$option         = get_option( $this->_token . '_settings', array() );
-		$target_size    = empty ( $option['target_size'] ) ? 4 : $option['target_size'];
+		$target_size    = empty ( $option['target_size'] ) ? 16 : $option['target_size'];
 		$target_size    *= ( 1024 * 1024 );
 		$threshold_size = (int) ( $target_size * $grace_factor );
 
@@ -205,7 +205,7 @@ class SQLite_Object_Cache {
 		}
 
 		/* Remove expired items (transients mostly). */
-		if ( $wp_object_cache->sqlite_remove_expired( true ) ) {
+		if ( $wp_object_cache->sqlite_remove_expired( ) ) {
 			/* If anything was removed, get the size again. */
 			$current_size = $wp_object_cache->sqlite_get_size();
 		}
