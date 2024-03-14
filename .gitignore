@@ -13,6 +13,7 @@ wp-includes/
 xmlrpc.php
 wp-content/cache/
 wp-content/backups/
+wp-content/fonts/
 wp-content/mu-plugins/pagely*
 wp-config-hosting.php
 wp-config.php
