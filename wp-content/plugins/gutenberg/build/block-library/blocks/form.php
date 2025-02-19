@@ -14,6 +14,7 @@
  * @return string The content of the block being rendered.
  */
 function gutenberg_render_block_core_form( $attributes, $content ) {
+	wp_enqueue_script_module( '@wordpress/block-library/form/view' );
 
 	$processed_content = new WP_HTML_Tag_Processor( $content );
 	$processed_content->next_tag( 'form' );
@@ -33,7 +34,7 @@ function gutenberg_render_block_core_form( $attributes, $content ) {
 	$method = empty( $attributes['method'] ) ? 'post' : $attributes['method'];
 	$processed_content->set_attribute( 'method', $method );
 
-	$extra_fields = apply_filters( 'gutenberg_render_block_core_form_extra_fields', '', $attributes );
+	$extra_fields = apply_filters( 'render_block_core_form_extra_fields', '', $attributes );
 
 	return str_replace(
 		'</form>',
@@ -41,26 +42,6 @@ function gutenberg_render_block_core_form( $attributes, $content ) {
 		$processed_content->get_updated_html()
 	);
 }
-
-/**
- * Additional data to add to the view.js script for this block.
- */
-function gutenberg_block_core_form_view_script() {
-	if ( ! gutenberg_is_experiment_enabled( 'gutenberg-form-blocks' ) ) {
-		return;
-	}
-
-	wp_localize_script(
-		'wp-block-form-view',
-		'wpBlockFormSettings',
-		array(
-			'nonce'   => wp_create_nonce( 'wp-block-form' ),
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'action'  => 'wp_block_form_email_submit',
-		)
-	);
-}
-add_action( 'wp_enqueue_scripts', 'gutenberg_block_core_form_view_script' );
 
 /**
  * Adds extra fields to the form.
@@ -79,7 +60,7 @@ function gutenberg_block_core_form_extra_fields_comment_form( $extra_fields, $at
 	}
 	return $extra_fields;
 }
-add_filter( 'gutenberg_render_block_core_form_extra_fields', 'gutenberg_block_core_form_extra_fields_comment_form', 10, 2 );
+add_filter( 'render_block_core_form_extra_fields', 'gutenberg_block_core_form_extra_fields_comment_form', 10, 2 );
 
 /**
  * Sends an email if the form is a contact form.
@@ -92,7 +73,7 @@ function gutenberg_block_core_form_send_email() {
 	// Start building the email content.
 	$content = sprintf(
 		/* translators: %s: The request URI. */
-		__( 'Form submission from %1$s', 'gutenberg' ) . '</br>',
+		__( 'Form submission from %1$s' ) . '</br>',
 		'<a href="' . esc_url( get_site_url( null, $params['_wp_http_referer'] ) ) . '">' . get_bloginfo( 'name' ) . '</a>'
 	);
 
@@ -105,12 +86,12 @@ function gutenberg_block_core_form_send_email() {
 	}
 
 	// Filter the email content.
-	$content = apply_filters( 'gutenberg_render_block_core_form_email_content', $content, $params );
+	$content = apply_filters( 'render_block_core_form_email_content', $content, $params );
 
 	// Send the email.
 	$result = wp_mail(
 		str_replace( 'mailto:', '', $params['formAction'] ),
-		__( 'Form submission', 'gutenberg' ),
+		__( 'Form submission' ),
 		$content
 	);
 

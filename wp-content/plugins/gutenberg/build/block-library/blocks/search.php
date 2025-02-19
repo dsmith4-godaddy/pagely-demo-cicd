@@ -31,8 +31,8 @@ function gutenberg_render_block_core_search( $attributes ) {
 
 	$input_id            = wp_unique_id( 'wp-block-search__input-' );
 	$classnames          = gutenberg_classnames_for_block_core_search( $attributes );
-	$show_label          = ( ! empty( $attributes['showLabel'] ) ) ? true : false;
-	$use_icon_button     = ( ! empty( $attributes['buttonUseIcon'] ) ) ? true : false;
+	$show_label          = ! empty( $attributes['showLabel'] );
+	$use_icon_button     = ! empty( $attributes['buttonUseIcon'] );
 	$show_button         = ( ! empty( $attributes['buttonPosition'] ) && 'no-button' === $attributes['buttonPosition'] ) ? false : true;
 	$button_position     = $show_button ? $attributes['buttonPosition'] : null;
 	$query_params        = ( ! empty( $attributes['query'] ) ) ? $attributes['query'] : array();
@@ -80,18 +80,7 @@ function gutenberg_render_block_core_search( $attributes ) {
 		// If it's interactive, enqueue the script module and add the directives.
 		$is_expandable_searchfield = 'button-only' === $button_position;
 		if ( $is_expandable_searchfield ) {
-			$suffix = wp_scripts_get_suffix();
-			if ( defined( 'IS_GUTENBERG_PLUGIN' ) && IS_GUTENBERG_PLUGIN ) {
-				$module_url = gutenberg_url( '/build/interactivity/search.min.js' );
-			}
-
-			wp_register_script_module(
-				'@wordpress/block-library/search',
-				isset( $module_url ) ? $module_url : includes_url( "blocks/search/view{$suffix}.js" ),
-				array( '@wordpress/interactivity' ),
-				defined( 'GUTENBERG_VERSION' ) ? GUTENBERG_VERSION : get_bloginfo( 'version' )
-			);
-			wp_enqueue_script_module( '@wordpress/block-library/search' );
+			wp_enqueue_script_module( '@wordpress/block-library/search/view' );
 
 			$input->set_attribute( 'data-wp-bind--aria-hidden', '!context.isSearchInputVisible' );
 			$input->set_attribute( 'data-wp-bind--tabindex', 'state.tabindex' );
@@ -188,11 +177,11 @@ function gutenberg_render_block_core_search( $attributes ) {
 			)
 		);
 		$form_directives      = '
-		 data-wp-interactive="core/search"'
-		. $form_context .
-		'data-wp-class--wp-block-search__searchfield-hidden="!context.isSearchInputVisible"
-		 data-wp-on--keydown="actions.handleSearchKeydown"
-		 data-wp-on--focusout="actions.handleSearchFocusout"
+		 data-wp-interactive="core/search"
+		 ' . $form_context . '
+		 data-wp-class--wp-block-search__searchfield-hidden="!context.isSearchInputVisible"
+		 data-wp-on-async--keydown="actions.handleSearchKeydown"
+		 data-wp-on-async--focusout="actions.handleSearchFocusout"
 		';
 	}
 
@@ -207,6 +196,8 @@ function gutenberg_render_block_core_search( $attributes ) {
 
 /**
  * Registers the `core/search` block on the server.
+ *
+ * @since 5.2.0
  */
 function gutenberg_register_block_core_search() {
 	register_block_type_from_metadata(
@@ -220,6 +211,8 @@ add_action( 'init', 'gutenberg_register_block_core_search', 20 );
 
 /**
  * Builds the correct top level classnames for the 'core/search' block.
+ *
+ * @since 5.6.0
  *
  * @param array $attributes The block attributes.
  *
@@ -264,6 +257,8 @@ function gutenberg_classnames_for_block_core_search( $attributes ) {
  * Based on whether the Search block is configured to display the button inside
  * or not, the generated rule is injected into the appropriate collection of
  * styles for later application in the block's markup.
+ *
+ * @since 6.1.0
  *
  * @param array  $attributes     The block attributes.
  * @param string $property       Border property to generate rule for e.g. width or color.
@@ -310,13 +305,15 @@ function gutenberg_apply_block_core_search_border_style( $attributes, $property,
  * injects rules into the provided wrapper, button and input style arrays for
  * uniform "flat" borders or those with individual sides configured.
  *
+ * @since 6.1.0
+ *
  * @param array  $attributes     The block attributes.
  * @param string $property       Border property to generate rule for e.g. width or color.
  * @param array  $wrapper_styles Current collection of wrapper styles.
  * @param array  $button_styles  Current collection of button styles.
  * @param array  $input_styles   Current collection of input styles.
  */
-function gutenberg_gutenberg_apply_block_core_search_border_styles( $attributes, $property, &$wrapper_styles, &$button_styles, &$input_styles ) {
+function gutenberg_apply_block_core_search_border_styles( $attributes, $property, &$wrapper_styles, &$button_styles, &$input_styles ) {
 	gutenberg_apply_block_core_search_border_style( $attributes, $property, null, $wrapper_styles, $button_styles, $input_styles );
 	gutenberg_apply_block_core_search_border_style( $attributes, $property, 'top', $wrapper_styles, $button_styles, $input_styles );
 	gutenberg_apply_block_core_search_border_style( $attributes, $property, 'right', $wrapper_styles, $button_styles, $input_styles );
@@ -330,6 +327,8 @@ function gutenberg_gutenberg_apply_block_core_search_border_styles( $attributes,
  * The result will contain one entry for shared styles such as those for the
  * inner input or button and a second for the inner wrapper should the block
  * be positioning the button "inside".
+ *
+ * @since 5.8.0
  *
  * @param  array $attributes The block attributes.
  *
@@ -356,9 +355,9 @@ function gutenberg_styles_for_block_core_search( $attributes ) {
 	}
 
 	// Add border width and color styles.
-	gutenberg_gutenberg_apply_block_core_search_border_styles( $attributes, 'width', $wrapper_styles, $button_styles, $input_styles );
-	gutenberg_gutenberg_apply_block_core_search_border_styles( $attributes, 'color', $wrapper_styles, $button_styles, $input_styles );
-	gutenberg_gutenberg_apply_block_core_search_border_styles( $attributes, 'style', $wrapper_styles, $button_styles, $input_styles );
+	gutenberg_apply_block_core_search_border_styles( $attributes, 'width', $wrapper_styles, $button_styles, $input_styles );
+	gutenberg_apply_block_core_search_border_styles( $attributes, 'color', $wrapper_styles, $button_styles, $input_styles );
+	gutenberg_apply_block_core_search_border_styles( $attributes, 'style', $wrapper_styles, $button_styles, $input_styles );
 
 	// Add border radius styles.
 	$has_border_radius = ! empty( $attributes['style']['border']['radius'] );
@@ -457,7 +456,9 @@ function gutenberg_styles_for_block_core_search( $attributes ) {
 }
 
 /**
- * Returns typography classnames depending on whether there are named font sizes/families .
+ * Returns typography classnames depending on whether there are named font sizes/families.
+ *
+ * @since 6.1.0
  *
  * @param array $attributes The block attributes.
  *
@@ -482,6 +483,8 @@ function gutenberg_get_typography_classes_for_block_core_search( $attributes ) {
 /**
  * Returns typography styles to be included in an HTML style tag.
  * This excludes text-decoration, which is applied only to the label and button elements of the search block.
+ *
+ * @since 6.1.0
  *
  * @param array $attributes The block attributes.
  *
@@ -533,6 +536,8 @@ function get_typography_gutenberg_styles_for_block_core_search( $attributes ) {
 /**
  * Returns border color classnames depending on whether there are named or custom border colors.
  *
+ * @since 5.9.0
+ *
  * @param array $attributes The block attributes.
  *
  * @return string The border color classnames to be applied to the block elements.
@@ -555,6 +560,8 @@ function gutenberg_get_border_color_classes_for_block_core_search( $attributes )
 
 /**
  * Returns color classnames depending on whether there are named or custom text and background colors.
+ *
+ * @since 5.9.0
  *
  * @param array $attributes The block attributes.
  *
