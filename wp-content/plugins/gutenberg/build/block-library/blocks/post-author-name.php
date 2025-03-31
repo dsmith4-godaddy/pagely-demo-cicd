@@ -8,6 +8,8 @@
 /**
  * Renders the `core/post-author-name` block on the server.
  *
+ * @since 6.2.0
+ *
  * @param  array    $attributes Block attributes.
  * @param  string   $content    Block default content.
  * @param  WP_Block $block      Block instance.
@@ -21,6 +23,10 @@ function gutenberg_render_block_core_post_author_name( $attributes, $content, $b
 	}
 
 	if ( empty( $author_id ) ) {
+		return '';
+	}
+
+	if ( ! post_type_supports( $block->context['postType'], 'author' ) ) {
 		return '';
 	}
 
@@ -43,6 +49,8 @@ function gutenberg_render_block_core_post_author_name( $attributes, $content, $b
 
 /**
  * Registers the `core/post-author-name` block on the server.
+ *
+ * @since 6.2.0
  */
 function gutenberg_register_block_core_post_author_name() {
 	register_block_type_from_metadata(

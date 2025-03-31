@@ -8,6 +8,8 @@
 /**
  * Renders the `core/comments-pagination-next` block on the server.
  *
+ * @since 6.0.0
+ *
  * @param array    $attributes Block attributes.
  * @param string   $content    Block default content.
  * @param WP_Block $block      Block instance.
@@ -35,7 +37,7 @@ function gutenberg_render_block_core_comments_pagination_next( $attributes, $con
 		$label .= $pagination_arrow;
 	}
 
-	$next_comments_link = get_next_comments_link( $label, $max_page );
+	$next_comments_link = get_next_comments_link( $label, $max_page, $comment_vars['paged'] ?? null );
 
 	remove_filter( 'next_posts_link_attributes', $filter_link_attributes );
 
@@ -48,6 +50,8 @@ function gutenberg_render_block_core_comments_pagination_next( $attributes, $con
 
 /**
  * Registers the `core/comments-pagination-next` block on the server.
+ *
+ * @since 6.0.0
  */
 function gutenberg_register_block_core_comments_pagination_next() {
 	register_block_type_from_metadata(
