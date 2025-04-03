@@ -1,7 +1,7 @@
 <?php
 /*
  * Plugin Name: Totally Cool MU-Plugin
- * Version: 0.42.2
+ * Version: 0.42.3
  *
  * This mu-plugin doesn't do anything (obviously). It's here as an example
  * of how you could add an mu-plugin to your repo. The key thing to keep
